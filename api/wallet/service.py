@@ -1,4 +1,5 @@
 import os
+import traceback
 import uuid
 from wsgiref import headers
 
@@ -41,9 +42,11 @@ class WalletService:
         
     def create_transaction(self, request):
         try:
-            user = request.data.get('email')
+            user = request.wallet_profile
+            if not user:
+                return Response({'message': 'no auth'}, status=status.HTTP_401_UNAUTHORIZED)
+            
             amount = request.data.get('amount')
-            reference = str(uuid.uuid4())
             
             paystack_key = os.getenv("PAYSTACK_KEY", settings.PAYSTACK_KEY)
             
@@ -52,23 +55,42 @@ class WalletService:
                 "Content-type": 'application/json'
             }
             payload ={
-                'email': user,
-                'amount': amount,
+                'email': user.user.email,
+                'amount': int(float(amount) * 100),
             }
             
-            # Wallet.objects.get(user__email=user)
+            user2 = User.objects.get(email=user)
+            
+            wallet = Wallet.objects.get(user=user2)
             
             response = requests.post("https://api.paystack.co/transaction/initialize", json=payload, headers=headers)
             res_data = response.json()
          
 
             if res_data.get("status") is True:
+                wallet.balance += amount
+                wallet.save()
+                
+                reference =  res_data['data']['reference']
+                
+                Wallet_Transaction.objects.create(
+                    wallet = wallet,
+                    amount = amount,
+                    transaction_type = "deposit",
+                    status = "pending",
+                    reference = reference,
+                )
+                
+                wallet_serializer = WalletSerializer(wallet) 
+                
                 return Response({
                     "payment_url": res_data["data"]["authorization_url"],
-                    "data" : res_data['data']
+                    "wallet": wallet_serializer.data,
                 }, status=status.HTTP_200_OK)
             else:
                 return Response({"error": "Paystack payment failed"}, status=status.HTTP_400_BAD_REQUEST)
 
         except Exception as e:
+            error_trace = traceback.format_exc() 
+            print(error_trace) 
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

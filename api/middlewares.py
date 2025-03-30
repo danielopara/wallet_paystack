@@ -11,7 +11,7 @@ class AuthMiddleware(MiddlewareMixin):
         auth_result = auth.authenticate(request)
 
         if auth_result is None:
-            request.user_profile = None
+            request.wallet_profile = None
             return
 
         user, _ = auth_result
