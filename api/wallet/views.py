@@ -11,3 +11,9 @@ def create_wallet(request):
 @permission_classes([IsAuthenticated])
 def create_transaction(request):
     return WalletService().create_transaction(request)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def verify_payment(request):
+    return WalletService().verify_payment(request)

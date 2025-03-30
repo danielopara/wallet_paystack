@@ -13,6 +13,8 @@ from rest_framework.response import Response
 
 
 class WalletService:
+    paystack_key = os.getenv("PAYSTACK_KEY", settings.PAYSTACK_KEY)
+
     def create_wallet(self, request):
         try:
             username = request.data.get('username')
@@ -48,10 +50,12 @@ class WalletService:
             
             amount = request.data.get('amount')
             
-            paystack_key = os.getenv("PAYSTACK_KEY", settings.PAYSTACK_KEY)
+            if amount <= 0:
+                return Response({'message': 'amount cannot be less or equal to 0'}, status = status.HTTP_400_BAD_REQUEST)
+            
             
             headers = {
-                "Authorization": f"Bearer {paystack_key}",
+                "Authorization": f"Bearer {self.paystack_key}",
                 "Content-type": 'application/json'
             }
             payload ={
@@ -68,12 +72,10 @@ class WalletService:
          
 
             if res_data.get("status") is True:
-                wallet.balance += amount
-                wallet.save()
                 
                 reference =  res_data['data']['reference']
                 
-                Wallet_Transaction.objects.create(
+                transaction = Wallet_Transaction.objects.create(
                     wallet = wallet,
                     amount = amount,
                     transaction_type = "deposit",
@@ -81,15 +83,55 @@ class WalletService:
                     reference = reference,
                 )
                 
-                wallet_serializer = WalletSerializer(wallet) 
+                serializer = WalletTransactionSerializer(transaction) 
                 
                 return Response({
                     "payment_url": res_data["data"]["authorization_url"],
-                    "wallet": wallet_serializer.data,
+                    "reference": res_data['data']['reference'],
+                    "transaction": serializer.data,
                 }, status=status.HTTP_200_OK)
             else:
                 return Response({"error": "Paystack payment failed"}, status=status.HTTP_400_BAD_REQUEST)
 
+        except Exception as e:
+            error_trace = traceback.format_exc() 
+            print(error_trace) 
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+    
+    def verify_payment(self, request):
+        try:
+            reference = request.GET.get('reference')
+            user = request.wallet_profile
+            
+            if not user:
+                return Response({'message': 'no auth'}, status=status.HTTP_401_UNAUTHORIZED)
+            user2 = User.objects.get(email=user)
+            
+            wallet = Wallet.objects.get(user=user2)
+            transaction = Wallet_Transaction.objects.get(reference=reference)
+            
+            headers = {
+                "Authorization": f"Bearer {self.paystack_key}",
+                "Content-type": 'application/json'
+            }
+            
+            url = f"https://api.paystack.co/transaction/verify/{reference}"
+            response = requests.get(url, headers=headers)
+            verification_data = response.json()
+            
+            if verification_data['data']['status'] == "success":
+                
+                wallet.balance += transaction.amount
+                transaction.status = "success"
+                wallet.save()
+                transaction.save()
+                
+                serializer = WalletSerializer(wallet)
+                transaction_serializer = WalletTransactionSerializer(transaction)
+                return Response({'message': 'true', 'wallet_data': serializer.data, 'transaction_data': transaction_serializer.data})
+            
+            return Response({'data': verification_data})
         except Exception as e:
             error_trace = traceback.format_exc() 
             print(error_trace) 
