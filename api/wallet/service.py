@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import os
 import traceback
 import uuid
@@ -93,9 +95,7 @@ class WalletService:
             else:
                 return Response({"error": "Paystack payment failed"}, status=status.HTTP_400_BAD_REQUEST)
 
-        except Exception as e:
-            error_trace = traceback.format_exc() 
-            print(error_trace) 
+        except Exception as e: 
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
     
@@ -138,3 +138,43 @@ class WalletService:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 ## work on webhook
+    def webhook(self, request):
+        try:
+            paystack_signature = request.headers.get("x-paystack-signature")
+            computed_signature = hmac.new(
+                bytes(self.paystack_key, 'utf-8'),
+                msg=request.body,
+                digestmod=hashlib.sha512
+            ).hexdigest()
+            
+            if paystack_signature != computed_signature:
+                return Response({"error": "Invalid signature"}, status=status.HTTP_403_FORBIDDEN)
+            
+            payload = request.data
+            event = payload.get('event')
+            
+            if event == 'charge.success':
+                reference = payload['data']['reference']
+                customer_email = payload['data']['customer']['email']
+                transaction = Wallet_Transaction.objects.get(reference = reference)
+                
+                if transaction is not None:
+                    if transaction.status == 'success':
+                        print("no update")
+                    transaction.status = 'success'
+                    amount = transaction.amount
+                    
+                    user = User.objects.get(email=customer_email)
+                    wallet = Wallet.objects.get(user = user)
+                    
+                    wallet.balance += amount
+                    
+                    transaction.save()
+                    wallet.save()
+                    print(f'payment with reference {reference} is successful')
+
+            return Response({'data': payload})
+        except Exception as e:
+            error_trace = traceback.format_exc() 
+            print(error_trace) 
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

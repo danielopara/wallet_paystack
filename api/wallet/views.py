@@ -1,4 +1,5 @@
 from api.wallet.service import WalletService
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
@@ -17,3 +18,8 @@ def create_transaction(request):
 @permission_classes([IsAuthenticated])
 def verify_payment(request):
     return WalletService().verify_payment(request)
+
+@csrf_exempt
+@api_view(['POST'])
+def webhook(request):
+    return WalletService().webhook(request)

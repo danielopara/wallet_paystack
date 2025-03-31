@@ -33,8 +33,16 @@ SECRET_KEY = 'django-insecure-67s(24p+2x=%$0oigwdw7y_$)h5=+^f_phhm@&n)3cm7zoc79p
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    "*"
+]
 
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://api.paystack.co",
+    "https://44f4-197-211-59-72.ngrok-free.app", 
+    # "https://your-ngrok-subdomain.ngrok-free.app",  # Replace with your actual NGROK URL
+]
 
 # Application definition
 
